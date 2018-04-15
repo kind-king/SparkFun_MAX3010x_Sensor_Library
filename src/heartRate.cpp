@@ -104,8 +104,8 @@ bool checkForBeat(int32_t sample)
     negativeEdge = 0;
     IR_AC_Signal_max = 0;
 
-    //if ((IR_AC_Max - IR_AC_Min) > 100 & (IR_AC_Max - IR_AC_Min) < 1000)
-    if ((IR_AC_Max - IR_AC_Min) > 20 & (IR_AC_Max - IR_AC_Min) < 1000)
+    if ((IR_AC_Max - IR_AC_Min) > 100 & (IR_AC_Max - IR_AC_Min) < 1000)
+    //if ((IR_AC_Max - IR_AC_Min) > 20 & (IR_AC_Max - IR_AC_Min) < 1000)
     {
       //Heart beat!!!
       beatDetected = true;
@@ -149,6 +149,7 @@ int16_t lowPassFIRFilter(int16_t din)
 
   int32_t z = mul16(FIRCoeffs[11], cbuf[(offset - 11) & 0x1F]);
   
+  //Sum all coef FIRCoeffs is 25790
   for (uint8_t i = 0 ; i < 11 ; i++)
   {
     z += mul16(FIRCoeffs[i], cbuf[(offset - i) & 0x1F] + cbuf[(offset - 22 + i) & 0x1F]);
@@ -157,11 +158,11 @@ int16_t lowPassFIRFilter(int16_t din)
   offset++;
   offset %= 32; //Wrap condition
 
-  return(z >> 15);
+  return(z >> 15); //Divide to 32768
 }
 
 //  Integer multiplier
-int32_t mul16(int16_t x, int16_t y)
+inline int32_t mul16(int16_t x, int16_t y)
 {
   return((long)x * (long)y);
 }

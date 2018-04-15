@@ -43,15 +43,34 @@
 
 #endif
 
+//The MAX30105 stores up to 32 samples on the IC
+//This is additional local storage to the microcontroller
+struct Record
+{  
+  uint32_t * red;
+  uint32_t * IR;
+#ifndef MAX30102
+  uint32_t * green;
+#endif
+  byte head;
+  byte tail;
+};
+
 class MAX30105 {
  public: 
-  MAX30105(void);
+  const int STORAGE_SIZE = 4; //Each long is 4 bytes so limit this to fit on your micro
+  Record sense; //This is our circular buffer of readings from the sensor
+
+  MAX30105(const int STORAGE_SIZE = 4);
+  ~MAX30105();
 
   boolean begin(TwoWire &wirePort = Wire, uint32_t i2cSpeed = I2C_SPEED_STANDARD, uint8_t i2caddr = MAX30105_ADDRESS);
 
   uint32_t getRed(void); //Returns immediate red value
   uint32_t getIR(void); //Returns immediate IR value
+#ifndef MAX30102
   uint32_t getGreen(void); //Returns immediate green value
+#endif
   bool safeCheck(uint8_t maxTimeToCheck); //Given a max amount of time, check for new data
 
   // Configuration
@@ -67,7 +86,9 @@ class MAX30105 {
 
   void setPulseAmplitudeRed(uint8_t value);
   void setPulseAmplitudeIR(uint8_t value);
+#ifndef MAX30102
   void setPulseAmplitudeGreen(uint8_t value);
+#endif
   void setPulseAmplitudeProximity(uint8_t value);
 
   void setProximityThreshold(uint8_t threshMSB);
@@ -104,8 +125,11 @@ class MAX30105 {
   void nextSample(void); //Advances the tail of the sense array
   uint32_t getFIFORed(void); //Returns the FIFO sample pointed to by tail
   uint32_t getFIFOIR(void); //Returns the FIFO sample pointed to by tail
+#ifndef MAX30102
   uint32_t getFIFOGreen(void); //Returns the FIFO sample pointed to by tail
+#endif
 
+  uint8_t getCountOverflow(void);
   uint8_t getWritePointer(void);
   uint8_t getReadPointer(void);
   void clearFIFO(void); //Sets the read/write pointers to zero

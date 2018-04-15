@@ -29,7 +29,9 @@ static const uint8_t MAX30105_MODECONFIG = 		0x09;
 static const uint8_t MAX30105_PARTICLECONFIG = 	0x0A;    // Note, sometimes listed as "SPO2" config in datasheet (pg. 11)
 static const uint8_t MAX30105_LED1_PULSEAMP = 	0x0C;
 static const uint8_t MAX30105_LED2_PULSEAMP = 	0x0D;
+#ifndef MAX30102
 static const uint8_t MAX30105_LED3_PULSEAMP = 	0x0E;
+#endif
 static const uint8_t MAX30105_LED_PROX_AMP = 	0x10;
 static const uint8_t MAX30105_MULTILEDCONFIG1 = 0x11;
 static const uint8_t MAX30105_MULTILEDCONFIG2 = 0x12;
@@ -127,28 +129,35 @@ static const uint8_t MAX30105_SLOT4_MASK = 		0x8F;
 static const uint8_t SLOT_NONE = 				0x00;
 static const uint8_t SLOT_RED_LED = 			0x01;
 static const uint8_t SLOT_IR_LED = 				0x02;
+#ifndef MAX30102
 static const uint8_t SLOT_GREEN_LED = 			0x03;
+#endif
 static const uint8_t SLOT_NONE_PILOT = 			0x04;
 static const uint8_t SLOT_RED_PILOT =			0x05;
 static const uint8_t SLOT_IR_PILOT = 			0x06;
+#ifndef MAX30102
 static const uint8_t SLOT_GREEN_PILOT = 		0x07;
+#endif
 
 static const uint8_t MAX_30105_EXPECTEDPARTID = 0x15;
 
-//The MAX30105 stores up to 32 samples on the IC
-//This is additional local storage to the microcontroller
-const int STORAGE_SIZE = 4; //Each long is 4 bytes so limit this to fit on your micro
-struct Record
-{
-  uint32_t red[STORAGE_SIZE];
-  uint32_t IR[STORAGE_SIZE];
-  uint32_t green[STORAGE_SIZE];
-  byte head;
-  byte tail;
-} sense; //This is our circular buffer of readings from the sensor
 
-MAX30105::MAX30105() {
-  // Constructor
+MAX30105::MAX30105(const int STORAGE_SIZE) : STORAGE_SIZE(STORAGE_SIZE) 
+{ // Constructor
+  sense.IR = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
+  sense.red = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
+#ifndef MAX30102
+  sense.green = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
+#endif
+}
+
+MAX30105::~MAX30105()
+{ // Denstructor
+  free(sense.IR);
+  free(sense.red);
+#ifndef MAX30102
+  free(sense.green);
+#endif 
 }
 
 boolean MAX30105::begin(TwoWire &wirePort, uint32_t i2cSpeed, uint8_t i2caddr) {
@@ -251,8 +260,31 @@ void MAX30105::wakeUp(void) {
 
 void MAX30105::setLEDMode(uint8_t mode) {
   // Set which LEDs are used for sampling -- Red only, RED+IR only, or custom.
-  // See datasheet, page 19
+  // See datasheet, page 19  
   bitMask(MAX30105_MODECONFIG, MAX30105_MODE_MASK, mode);
+  /* //if STORAGE_SIZE non const
+  if (mode == MAX30105_MODE_MULTILED) {
+    if (sense.IR == NULL) sense.IR = (uint32_t*) realloc(sense.IR, STORAGE_SIZE * sizeof(uint32_t));
+    if (sense.red == NULL) sense.red = (uint32_t*) realloc(sense.red, STORAGE_SIZE * sizeof(uint32_t));
+#ifndef MAX30102
+    if (sense.green == NULL) sense.green = (uint32_t*) realloc(sense.green, STORAGE_SIZE * sizeof(uint32_t));
+#endif
+  }
+  if (mode == MAX30105_MODE_REDIRONLY) {
+    if (sense.IR == NULL) sense.IR = (uint32_t*) realloc(sense.IR, STORAGE_SIZE * sizeof(uint32_t));
+    if (sense.red == NULL) sense.red = (uint32_t*) realloc(sense.red, STORAGE_SIZE * sizeof(uint32_t));
+#ifndef MAX30102
+    //sense.green = NULL;
+#endif
+  }
+  if (mode == MAX30105_MODE_REDONLY) {
+    if (sense.red == NULL) sense.red = (uint32_t*) realloc(sense.red, STORAGE_SIZE * sizeof(uint32_t));
+    //sense.IR = NULL;
+#ifndef MAX30102
+    //sense.green = NULL;
+#endif
+  }
+  */
 }
 
 void MAX30105::setADCRange(uint8_t adcRange) {
@@ -280,9 +312,11 @@ void MAX30105::setPulseAmplitudeIR(uint8_t amplitude) {
   writeRegister8(_i2caddr, MAX30105_LED2_PULSEAMP, amplitude);
 }
 
+#ifndef MAX30102
 void MAX30105::setPulseAmplitudeGreen(uint8_t amplitude) {
   writeRegister8(_i2caddr, MAX30105_LED3_PULSEAMP, amplitude);
 }
+#endif
 
 void MAX30105::setPulseAmplitudeProximity(uint8_t amplitude) {
   writeRegister8(_i2caddr, MAX30105_LED_PROX_AMP, amplitude);
@@ -345,6 +379,12 @@ void MAX30105::clearFIFO(void) {
   writeRegister8(_i2caddr, MAX30105_FIFOREADPTR, 0);
 }
 
+//Return counts the number of samples lost. It saturates at 0xF.
+//Page 14
+uint8_t MAX30105::getCountOverflow(void) {
+  return readRegister8(_i2caddr, MAX30105_FIFOOVERFLOW); // 0b00011111 & 
+}
+
 //Enable roll over if FIFO over flows
 void MAX30105::enableFIFORollover(void) {
   bitMask(MAX30105_FIFOCONFIG, MAX30105_ROLLOVER_MASK, MAX30105_ROLLOVER_ENABLE);
@@ -382,14 +422,14 @@ float MAX30105::readTemperature() {
   // Poll for bit to clear, reading is then complete
   // Timeout after 100ms
   unsigned long startTime = millis();
-  while (millis() - startTime < 100)
+  while (millis() - startTime < 10)
   {
     uint8_t response = readRegister8(_i2caddr, MAX30105_DIETEMPCONFIG);
     if ((response & 0x01) == 0) break; //We're done!
     delay(1); //Let's not over burden the I2C bus
   }
   //TODO How do we want to fail? With what type of error?
-  //? if(millis() - startTime >= 100) return(-999.0);
+  if(millis() - startTime >= 10) return(-273.15); // Zero kelvin (−273.15 °C) is defined as absolute zero.
 
   // Step 2: Read die temperature register (integer)
   int8_t tempInt = readRegister8(_i2caddr, MAX30105_DIETEMPINT);
@@ -403,12 +443,15 @@ float MAX30105::readTemperature() {
 float MAX30105::readTemperatureF() {
   float temp = readTemperature();
 
-  if (temp != -999.0) temp = temp * 1.8 + 32.0;
+  temp = temp * 1.8 + 32.0; // Zero kelvin (-459.67 °F) is defined as absolute zero.
 
   return (temp);
 }
 
-// Set the PROX_INT_THRESHold
+// Set the PROX_INT_THRESHold (Page 24)
+// Example:
+// val = 0x01, then a 17-bit ADC value of 1023 (decimal) or higher triggers the PROX_INT interrupt.
+// val = 0xFF, then only a saturated ADC triggers the interrupt.
 void MAX30105::setPROXINTTHRESH(uint8_t val) {
   writeRegister8(_i2caddr, MAX30105_PROXINTTHRESH, val);
 }
@@ -460,7 +503,12 @@ void MAX30105::setup(byte powerLevel, byte sampleAverage, byte ledMode, int samp
   if (ledMode == 3) setLEDMode(MAX30105_MODE_MULTILED); //Watch all three LED channels
   else if (ledMode == 2) setLEDMode(MAX30105_MODE_REDIRONLY); //Red and IR
   else setLEDMode(MAX30105_MODE_REDONLY); //Red only
-  activeLEDs = ledMode; //Used to control how many bytes to read from FIFO buffer
+#ifndef MAX30102
+  activeLEDs = (ledMode > 3)? 3 : ledMode; //Used to control how many bytes to read from FIFO buffer
+#else
+  activeLEDs = (ledMode > 2)? 2 : ledMode;
+#endif
+
   //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
   //Particle Sensing Configuration
@@ -501,15 +549,25 @@ void MAX30105::setup(byte powerLevel, byte sampleAverage, byte ledMode, int samp
 
   setPulseAmplitudeRed(powerLevel);
   setPulseAmplitudeIR(powerLevel);
+#ifndef MAX30102
   setPulseAmplitudeGreen(powerLevel);
+#endif
   setPulseAmplitudeProximity(powerLevel);
   //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
 
   //Multi-LED Mode Configuration, Enable the reading of the three LEDs
   //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+#ifndef MAX30102
   enableSlot(1, SLOT_RED_LED);
   if (ledMode > 1) enableSlot(2, SLOT_IR_LED);
   if (ledMode > 2) enableSlot(3, SLOT_GREEN_LED);
+#else 
+  enableSlot(1, SLOT_RED_LED);
+  if (ledMode > 1) enableSlot(2, SLOT_IR_LED);
+  //else enableSlot(2, SLOT_NONE);
+  //enableSlot(3, SLOT_NONE);
+  //enableSlot(4, SLOT_NONE);
+#endif
   //enableSlot(1, SLOT_RED_PILOT);
   //enableSlot(2, SLOT_IR_PILOT);
   //enableSlot(3, SLOT_GREEN_PILOT);
@@ -525,7 +583,7 @@ void MAX30105::setup(byte powerLevel, byte sampleAverage, byte ledMode, int samp
 //Tell caller how many samples are available
 uint8_t MAX30105::available(void)
 {
-  uint8_t numberOfSamples = sense.head - sense.tail;
+  int8_t numberOfSamples = sense.head - sense.tail;
   if (numberOfSamples < 0) numberOfSamples += STORAGE_SIZE;
 
   return (numberOfSamples);
@@ -534,8 +592,8 @@ uint8_t MAX30105::available(void)
 //Report the most recent red value
 uint32_t MAX30105::getRed(void)
 {
-  //Check the sensor for new data for 250ms
-  if(safeCheck(250))
+  //Check the sensor for new data for 10ms
+  if(safeCheck(10))
     return (sense.red[sense.head]);
   else
     return(0); //Sensor failed to find new data
@@ -544,22 +602,24 @@ uint32_t MAX30105::getRed(void)
 //Report the most recent IR value
 uint32_t MAX30105::getIR(void)
 {
-  //Check the sensor for new data for 250ms
-  if(safeCheck(250))
+  //Check the sensor for new data for 10ms
+  if(safeCheck(10))
     return (sense.IR[sense.head]);
   else
     return(0); //Sensor failed to find new data
 }
 
+#ifndef MAX30102
 //Report the most recent Green value
 uint32_t MAX30105::getGreen(void)
 {
-  //Check the sensor for new data for 250ms
-  if(safeCheck(250))
+  //Check the sensor for new data for 10ms
+  if(safeCheck(10))
     return (sense.green[sense.head]);
   else
     return(0); //Sensor failed to find new data
 }
+#endif
 
 //Report the next Red value in the FIFO
 uint32_t MAX30105::getFIFORed(void)
@@ -573,11 +633,13 @@ uint32_t MAX30105::getFIFOIR(void)
   return (sense.IR[sense.tail]);
 }
 
+#ifndef MAX30102
 //Report the next Green value in the FIFO
 uint32_t MAX30105::getFIFOGreen(void)
 {
   return (sense.green[sense.tail]);
 }
+#endif
 
 //Advance the tail
 void MAX30105::nextSample(void)
@@ -634,6 +696,12 @@ uint16_t MAX30105::check(void)
         toGet = I2C_BUFFER_LENGTH - (I2C_BUFFER_LENGTH % (activeLEDs * 3)); //Trim toGet to be a multiple of the samples we need to read
       }
 
+#ifdef debug
+        debug.print("func: \"check\", debug toGet = ");
+        debug.println(toGet);
+        debug.print("debug bytesLeftToRead = ");
+        debug.println(bytesLeftToRead);
+#endif
       bytesLeftToRead -= toGet;
 
       //Request toGet number of bytes from sensor
@@ -675,7 +743,7 @@ uint16_t MAX30105::check(void)
           
 		  sense.IR[sense.head] = tempLong;
         }
-
+#ifndef MAX30102
         if (activeLEDs > 2)
         {
           //Burst read three more bytes - Green
@@ -691,7 +759,7 @@ uint16_t MAX30105::check(void)
 
           sense.green[sense.head] = tempLong;
         }
-
+#endif
         toGet -= activeLEDs * 3;
       }
 
@@ -713,6 +781,10 @@ bool MAX30105::safeCheck(uint8_t maxTimeToCheck)
   {
 	if(millis() - markTime > maxTimeToCheck) return(false);
 
+#ifdef debug
+  debug.print("func: \"safeCheck\", debug time = ");
+  debug.println(millis() - markTime);
+#endif
 	if(check() == true) //We found new data!
 	  return(true);
 
