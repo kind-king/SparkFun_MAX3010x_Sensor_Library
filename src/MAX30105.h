@@ -43,26 +43,30 @@
 
 #endif
 
+#ifdef STORAGE_SIZE_4
+#define STORAGE_SIZE 9 * 8 * STORAGE_SIZE_4 //Each long is 9 bytes so limit this to fit on your micro
+#else
+#define STORAGE_SIZE 9 * 8 //Should be multiple 8 and 18
+#endif
+
 //The MAX30105 stores up to 32 samples on the IC
 //This is additional local storage to the microcontroller
 struct Record
 {  
-  uint32_t * red;
-  uint32_t * IR;
+  uint8_t red[STORAGE_SIZE/8]; // STORAGE_SIZE % 72 = 0
+  uint8_t IR[STORAGE_SIZE/8]; // 72bit / 18bit = 4sample
 #ifndef MAX30102
-  uint32_t * green;
+  uint8_t green[STORAGE_SIZE/8]; // 72bit / 8bit = 9byte
 #endif
-  byte head;
-  byte tail;
+  uint16_t head{};
+  uint16_t tail{};
 };
 
 class MAX30105 {
  public: 
-  const int STORAGE_SIZE = 4; //Each long is 4 bytes so limit this to fit on your micro
   Record sense; //This is our circular buffer of readings from the sensor
 
-  MAX30105(const int STORAGE_SIZE = 4);
-  ~MAX30105();
+  MAX30105();
 
   boolean begin(TwoWire &wirePort = Wire, uint32_t i2cSpeed = I2C_SPEED_STANDARD, uint8_t i2caddr = MAX30105_ADDRESS);
 

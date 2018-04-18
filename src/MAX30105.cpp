@@ -142,23 +142,23 @@ static const uint8_t SLOT_GREEN_PILOT = 		0x07;
 static const uint8_t MAX_30105_EXPECTEDPARTID = 0x15;
 
 
-MAX30105::MAX30105(const int STORAGE_SIZE) : STORAGE_SIZE(STORAGE_SIZE) 
+MAX30105::MAX30105()
 { // Constructor
-  sense.IR = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
-  sense.red = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
-#ifndef MAX30102
-  sense.green = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
-#endif
+//   sense.IR = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
+//   sense.red = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
+// #ifndef MAX30102
+//   sense.green = (uint32_t*) malloc(STORAGE_SIZE * sizeof(uint32_t));
+// #endif
 }
 
-MAX30105::~MAX30105()
-{ // Denstructor
-  free(sense.IR);
-  free(sense.red);
-#ifndef MAX30102
-  free(sense.green);
-#endif 
-}
+// MAX30105::~MAX30105()
+// { // Denstructor
+//   free(sense.IR);
+//   free(sense.red);
+// #ifndef MAX30102
+//   free(sense.green);
+// #endif 
+// }
 
 boolean MAX30105::begin(TwoWire &wirePort, uint32_t i2cSpeed, uint8_t i2caddr) {
 
@@ -262,29 +262,6 @@ void MAX30105::setLEDMode(uint8_t mode) {
   // Set which LEDs are used for sampling -- Red only, RED+IR only, or custom.
   // See datasheet, page 19  
   bitMask(MAX30105_MODECONFIG, MAX30105_MODE_MASK, mode);
-  /* //if STORAGE_SIZE non const
-  if (mode == MAX30105_MODE_MULTILED) {
-    if (sense.IR == NULL) sense.IR = (uint32_t*) realloc(sense.IR, STORAGE_SIZE * sizeof(uint32_t));
-    if (sense.red == NULL) sense.red = (uint32_t*) realloc(sense.red, STORAGE_SIZE * sizeof(uint32_t));
-#ifndef MAX30102
-    if (sense.green == NULL) sense.green = (uint32_t*) realloc(sense.green, STORAGE_SIZE * sizeof(uint32_t));
-#endif
-  }
-  if (mode == MAX30105_MODE_REDIRONLY) {
-    if (sense.IR == NULL) sense.IR = (uint32_t*) realloc(sense.IR, STORAGE_SIZE * sizeof(uint32_t));
-    if (sense.red == NULL) sense.red = (uint32_t*) realloc(sense.red, STORAGE_SIZE * sizeof(uint32_t));
-#ifndef MAX30102
-    //sense.green = NULL;
-#endif
-  }
-  if (mode == MAX30105_MODE_REDONLY) {
-    if (sense.red == NULL) sense.red = (uint32_t*) realloc(sense.red, STORAGE_SIZE * sizeof(uint32_t));
-    //sense.IR = NULL;
-#ifndef MAX30102
-    //sense.green = NULL;
-#endif
-  }
-  */
 }
 
 void MAX30105::setADCRange(uint8_t adcRange) {
@@ -593,9 +570,16 @@ uint8_t MAX30105::available(void)
 uint32_t MAX30105::getRed(void)
 {
   //Check the sensor for new data for 10ms
-  if(safeCheck(10))
-    return (sense.red[sense.head]);
-  else
+  if(safeCheck(10)) {
+    uint32_t tempLong;
+    //Convert array to long
+    byte remain = sense.head % 8;
+    tempLong  = (uint32_t) (sense.red[sense.head / 8    ] >> remain | (uint8_t)(sense.red[sense.head / 8 + 1] << (8 - remain)));
+    tempLong += (uint32_t) (sense.red[sense.head / 8 + 1] >> remain | (uint8_t)(sense.red[sense.head / 8 + 2] << (8 - remain))) << 8;
+    tempLong += (uint32_t) (sense.red[sense.head / 8 + 2] >> remain & 0x03) << 16;
+    //Zero out all but 18 bits
+    return tempLong;
+  } else
     return(0); //Sensor failed to find new data
 }
 
@@ -603,9 +587,16 @@ uint32_t MAX30105::getRed(void)
 uint32_t MAX30105::getIR(void)
 {
   //Check the sensor for new data for 10ms
-  if(safeCheck(10))
-    return (sense.IR[sense.head]);
-  else
+  if(safeCheck(10)) {
+    uint32_t tempLong;
+    //Convert array to long
+    byte remain = sense.head % 8;
+    tempLong  = (uint32_t) (sense.IR[sense.head / 8    ] >> remain | (uint8_t)(sense.IR[sense.head / 8 + 1] << (8 - remain)));
+    tempLong += (uint32_t) (sense.IR[sense.head / 8 + 1] >> remain | (uint8_t)(sense.IR[sense.head / 8 + 2] << (8 - remain))) << 8;
+    tempLong += (uint32_t) (sense.IR[sense.head / 8 + 2] >> remain & 0x03) << 16;
+    //Zero out all but 18 bits
+    return tempLong;
+  } else
     return(0); //Sensor failed to find new data
 }
 
@@ -614,9 +605,16 @@ uint32_t MAX30105::getIR(void)
 uint32_t MAX30105::getGreen(void)
 {
   //Check the sensor for new data for 10ms
-  if(safeCheck(10))
-    return (sense.green[sense.head]);
-  else
+  if(safeCheck(10)) {
+    uint32_t tempLong;
+    //Convert array to long
+    byte remain = sense.head % 8;
+    tempLong  = (uint32_t) (sense.green[sense.head / 8    ] >> remain | (uint8_t)(sense.green[sense.head / 8 + 1] << (8 - remain)));
+    tempLong += (uint32_t) (sense.green[sense.head / 8 + 1] >> remain | (uint8_t)(sense.green[sense.head / 8 + 2] << (8 - remain))) << 8;
+    tempLong += (uint32_t) (sense.green[sense.head / 8 + 2] >> remain & 0x03) << 16;
+    //Zero out all but 18 bits
+    return tempLong;
+  } else
     return(0); //Sensor failed to find new data
 }
 #endif
@@ -624,20 +622,41 @@ uint32_t MAX30105::getGreen(void)
 //Report the next Red value in the FIFO
 uint32_t MAX30105::getFIFORed(void)
 {
-  return (sense.red[sense.tail]);
+  uint32_t tempLong;
+  //Convert array to long
+  byte remain = sense.tail % 8;
+  tempLong  = (uint32_t) (sense.red[sense.tail / 8    ] >> remain | (uint8_t)(sense.red[sense.tail / 8 + 1] << (8 - remain)));
+  tempLong += (uint32_t) (sense.red[sense.tail / 8 + 1] >> remain | (uint8_t)(sense.red[sense.tail / 8 + 2] << (8 - remain))) << 8;
+  tempLong += (uint32_t) (sense.red[sense.tail / 8 + 2] >> remain & 0x03) << 16;
+  //Zero out all but 18 bits
+  return tempLong;
 }
 
 //Report the next IR value in the FIFO
 uint32_t MAX30105::getFIFOIR(void)
 {
-  return (sense.IR[sense.tail]);
+  uint32_t tempLong;
+  //Convert array to long
+  byte remain = sense.tail % 8;
+  tempLong  = (uint32_t) (sense.IR[sense.tail / 8    ] >> remain | (uint8_t)(sense.IR[sense.tail / 8 + 1] << (8 - remain)));
+  tempLong += (uint32_t) (sense.IR[sense.tail / 8 + 1] >> remain | (uint8_t)(sense.IR[sense.tail / 8 + 2] << (8 - remain))) << 8;
+  tempLong += (uint32_t) (sense.IR[sense.tail / 8 + 2] >> remain & 0x03) << 16;
+  //Zero out all but 18 bits
+  return tempLong;
 }
 
 #ifndef MAX30102
 //Report the next Green value in the FIFO
 uint32_t MAX30105::getFIFOGreen(void)
 {
-  return (sense.green[sense.tail]);
+  uint32_t tempLong;
+  //Convert array to long
+  byte remain = sense.tail % 8;
+  tempLong  = (uint32_t) (sense.green[sense.tail / 8    ] >> remain | (uint8_t)(sense.green[sense.tail / 8 + 1] << (8 - remain)));
+  tempLong += (uint32_t) (sense.green[sense.tail / 8 + 1] >> remain | (uint8_t)(sense.green[sense.tail / 8 + 2] << (8 - remain))) << 8;
+  tempLong += (uint32_t) (sense.green[sense.tail / 8 + 2] >> remain & 0x03) << 16;
+  //Zero out all but 18 bits
+  return tempLong;
 }
 #endif
 
@@ -646,7 +665,7 @@ void MAX30105::nextSample(void)
 {
   if(available()) //Only advance the tail if new data is available
   {
-    sense.tail++;
+    sense.tail += 18;
     sense.tail %= STORAGE_SIZE; //Wrap condition
   }
 }
@@ -709,55 +728,50 @@ uint16_t MAX30105::check(void)
       
       while (toGet > 0)
       {
-        sense.head++; //Advance the head of the storage struct
+        sense.head += 18; //Advance the head of the storage struct
         sense.head %= STORAGE_SIZE; //Wrap condition
 
-        byte temp[sizeof(uint32_t)]; //Array of 4 bytes that we will convert into long
-        uint32_t tempLong;
+        byte temp[3]; //Array of 4 bytes that we will convert into long
+        byte remain = sense.head % 8;
 
         //Burst read three bytes - RED
-        temp[3] = 0;
-        temp[2] = _i2cPort->read();
+        temp[2] = _i2cPort->read(); //_i2cPort->read() & 0x03 | sense.red[sense.head/8 + 2] & 0xFC ;
         temp[1] = _i2cPort->read();
         temp[0] = _i2cPort->read();
 
-        //Convert array to long
-        memcpy(&tempLong, temp, sizeof(tempLong));
-		
-		tempLong &= 0x3FFFF; //Zero out all but 18 bits
-
-        sense.red[sense.head] = tempLong; //Store this reading into the sense array
+        //Zero out all but 18 bits
+        sense.red[sense.head / 8    ] = temp[0] << remain | sense.red[sense.head / 8] & 0xFF >> (8 - remain); //Store this reading into the sense array
+        sense.red[sense.head / 8 + 1] = temp[1] << remain | temp[0] >> (8 - remain);
+        sense.red[sense.head / 8 + 2] = temp[2] << remain | temp[1] >> (8 - remain); // | sense.red[sense.head / 8 + 2] & (0xFF << remain);
+        // sense.red[(sense.head+8) % STORAGE_SIZE / 8];
 
         if (activeLEDs > 1)
         {
           //Burst read three more bytes - IR
-          temp[3] = 0;
-          temp[2] = _i2cPort->read();
+          temp[2] = _i2cPort->read(); //_i2cPort->read() & 0x03 | sense.IR[sense.head/8 + 2] & 0xFC ;
           temp[1] = _i2cPort->read();
           temp[0] = _i2cPort->read();
 
-          //Convert array to long
-          memcpy(&tempLong, temp, sizeof(tempLong));
-
-		  tempLong &= 0x3FFFF; //Zero out all but 18 bits
-          
-		  sense.IR[sense.head] = tempLong;
+          //Zero out all but 18 bits
+          sense.IR[sense.head/8    ] = temp[0] << remain + sense.IR[sense.head/8] & 0xFF >> (8 - remain); //Store this reading into the sense array
+          sense.IR[sense.head/8 + 1] = temp[1] << remain + temp[0] >> (8 - remain);
+          sense.IR[sense.head/8 + 2] = temp[2] << remain + temp[1] >> (8 - remain);
+          // sense.IR[(sense.head+8) % STORAGE_SIZE / 8];
         }
 #ifndef MAX30102
         if (activeLEDs > 2)
         {
           //Burst read three more bytes - Green
-          temp[3] = 0;
           temp[2] = _i2cPort->read();
           temp[1] = _i2cPort->read();
           temp[0] = _i2cPort->read();
 
-          //Convert array to long
-          memcpy(&tempLong, temp, sizeof(tempLong));
-
-		  tempLong &= 0x3FFFF; //Zero out all but 18 bits
-
-          sense.green[sense.head] = tempLong;
+          //Zero out all but 18 bits
+          byte remain = sense.head % 8;
+          sense.green[sense.head/8    ] = temp[0] << remain + sense.green[sense.head/8] & 0xFF >> (8 - remain); //Store this reading into the sense array
+          sense.green[sense.head/8 + 1] = temp[1] << remain + temp[0] >> (8 - remain);
+          sense.green[sense.head/8 + 2] = temp[2] << remain + temp[1] >> (8 - remain); // | sense.green[sense.head / 8 + 2] & (0xFF << remain);
+          // sense.green[(sense.head+8) % STORAGE_SIZE / 8];
         }
 #endif
         toGet -= activeLEDs * 3;
