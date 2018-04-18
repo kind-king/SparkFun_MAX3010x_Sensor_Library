@@ -16,10 +16,13 @@
 
 */
 
-#define MAX30102 // choise model
-#include <MAX30105.h>
+#define MAX30102 //Choise model
+#define STORAGE_SIZE_4 100//Each long is 9 bytes so limit this to fit on your micro
+//Every 9 bytes is 4 samples!
 
-#define Project_DEBUG true
+#include <MAX30105.h> 
+
+#define Project_DEBUG true // SWITCHER DEBUGGING ON/OFF
 
 #if Project_DEBUG == true
 #define DEBUG_Serial Serial
@@ -37,7 +40,7 @@
 #define DEBUG_printf(...)
 #define DEBUG_flush(...)
 #define DEBUG_var(token)
-#endif //Project_DEBUG == true
+#endif // END Project_DEBUG == true
 
 //Permissions for interruptions
 #define A_FULL true
@@ -48,12 +51,12 @@
 #define DIE_TEMP_RDY false
 
 #ifdef ESP8266
-MAX30105 particleSensor(500); //Each long is 4 bytes so limit this to fit on your micro
+MAX30105 particleSensor;
 #define IRQ D3
 #else 
-MAX30105 particleSensor; // particleSensor(20);
+MAX30105 particleSensor;
 #define IRQ 5
-#endif //ESP8266
+#endif // END ESP8266
 
 long samplesTaken = 0; //Counter for calculating the Hz or read rate
 long unblockedValue; //Average IR at power up
@@ -208,7 +211,7 @@ void loop()
 
   // Supports interruptions
   if ( micros() - inerruptTime > 80*1000 ) { particleSensor.check(); particleSensor.readTemperature(); } // 80ms > 78ms
-  while (digitalRead(IRQ) == LOW && visible_2 ) readReg(); 
+  while (digitalRead(IRQ) == LOW) readReg(); 
 
 #if Project_DEBUG == true
   // Control panel in the Serial
@@ -284,6 +287,10 @@ void readReg() {
   DEBUG_print("\treg2 = ");
   DEBUG_print(reg2, BIN);
   DEBUG_print("\n");
+
+  DEBUG_print("Count Overflow = ");       
+  DEBUG_print(particleSensor.getCountOverflow());
+  DEBUG_println();
   if (reg1 & 0x01 << 7 && A_FULL)  particleSensor.check(); // FIFO_A_FULL[3:0] register був заповнений
   if (reg1 & 0x01 << 6 && PPG_RDY) particleSensor.check(); // Нові дані пульсації готові
   if (reg1 & 0x01 << 5 && ALC_OVF)  DEBUG_print("WARNING!!! Over Flow"); // Переповнення ануляції наколишнього освітлення
